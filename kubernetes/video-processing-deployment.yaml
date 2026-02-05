@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-processing-service
+  namespace: video-platform
+  labels:
+    app: video-processing-service
+    version: v1
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: video-processing-service
+  template:
+    metadata:
+      labels:
+        app: video-processing-service
+        version: v1
+    spec:
+      containers:
+      - name: video-processing-service
+        image: video-platform/video-processing-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8081
+          name: http
+        env:
+        - name: KAFKA_BROKERS
+          value: "kafka:9092"
+        - name: AWS_S3_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: aws-secret
+              key: s3-bucket
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-secret
+              key: access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-secret
+              key: secret-access-key
+        - name: ETCD_ENDPOINTS
+          value: "etcd:2379"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        volumeMounts:
+        - name: temp-storage
+          mountPath: /tmp/video-processing
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8081
+          initialDelaySeconds: 20
+          periodSeconds: 5
+      volumes:
+      - name: temp-storage
+        emptyDir:
+          sizeLimit: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: video-processing-service
+  namespace: video-platform
+  labels:
+    app: video-processing-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8081
+    targetPort: 8081
+    protocol: TCP
+    name: http
+  selector:
+    app: video-processing-service
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: video-processing-hpa
+  namespace: video-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: video-processing-service
+  minReplicas: 5
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 85

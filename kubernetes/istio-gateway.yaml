@@ -1,0 +1,127 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: video-platform-gateway
+  namespace: video-platform
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: video-platform-tls
+    hosts:
+    - "*"
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: video-platform-routes
+  namespace: video-platform
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - video-platform-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /api/auth
+    route:
+    - destination:
+        host: user-service
+        port:
+          number: 8080
+    timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+  - match:
+    - uri:
+        prefix: /api/videos/upload
+    route:
+    - destination:
+        host: video-processing-service
+        port:
+          number: 8081
+    timeout: 300s
+  - match:
+    - uri:
+        prefix: /api/videos
+    route:
+    - destination:
+        host: storage-service
+        port:
+          number: 3000
+    timeout: 30s
+  - match:
+    - uri:
+        prefix: /api/search
+    route:
+    - destination:
+        host: search-service
+        port:
+          number: 8082
+    timeout: 10s
+  - match:
+    - uri:
+        prefix: /api/messages
+    route:
+    - destination:
+        host: messaging-service
+        port:
+          number: 8083
+    timeout: 30s
+  - match:
+    - uri:
+        prefix: /api/live
+    route:
+    - destination:
+        host: live-streaming-service
+        port:
+          number: 8084
+    timeout: 60s
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: user-service-circuit-breaker
+  namespace: video-platform
+spec:
+  host: user-service
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 2
+    outlierDetection:
+      consecutiveErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 40
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: video-processing-load-balancer
+  namespace: video-platform
+spec:
+  host: video-processing-service
+  trafficPolicy:
+    loadBalancer:
+      consistentHash:
+        httpHeaderName: X-Video-ID

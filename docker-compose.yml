@@ -1,0 +1,146 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: video-platform-postgres
+    environment:
+      POSTGRES_DB: video_platform
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - video-platform-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: video-platform-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - video-platform-network
+
+  # Kafka + Zookeeper
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: video-platform-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - video-platform-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: video-platform-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    networks:
+      - video-platform-network
+
+  # Elasticsearch
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: video-platform-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - video-platform-network
+
+  # Kibana (for Elasticsearch visualization)
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: video-platform-kibana
+    depends_on:
+      - elasticsearch
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    networks:
+      - video-platform-network
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: video-platform-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - video-platform-network
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: video-platform-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - video-platform-network
+
+  # etcd (for distributed coordination)
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.10
+    container_name: video-platform-etcd
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+    environment:
+      - ETCD_NAME=etcd0
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://etcd:2380
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
+      - ETCD_INITIAL_CLUSTER=etcd0=http://etcd:2380
+    networks:
+      - video-platform-network
+
+volumes:
+  postgres_data:
+  elasticsearch_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  video-platform-network:
+    driver: bridge

@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storage-service
+  namespace: video-platform
+  labels:
+    app: storage-service
+    version: v1
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: storage-service
+  template:
+    metadata:
+      labels:
+        app: storage-service
+        version: v1
+    spec:
+      containers:
+      - name: storage-service
+        image: video-platform/storage-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+          name: http
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: ETCD_ENDPOINTS
+          value: "etcd:2379"
+        - name: REDIS_URL
+          value: "redis://redis:6379"
+        - name: AWS_S3_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: aws-secret
+              key: s3-bucket
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: storage-volume
+          mountPath: /data/segments
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3000
+          initialDelaySeconds: 20
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: storage-volume
+        persistentVolumeClaim:
+          claimName: storage-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: storage-service
+  namespace: video-platform
+  labels:
+    app: storage-service
+spec:
+  type: ClusterIP
+  ports:
+  - port: 3000
+    targetPort: 3000
+    protocol: TCP
+    name: http
+  selector:
+    app: storage-service
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: storage-pvc
+  namespace: video-platform
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: fast-ssd

@@ -1,0 +1,182 @@
+groups:
+  - name: service_availability
+    interval: 30s
+    rules:
+      # High Error Rate Alert
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m])) by (service)
+            /
+            sum(rate(http_requests_total[5m])) by (service)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "High error rate detected for {{ $labels.service }}"
+          description: "Service {{ $labels.service }} has error rate above 5% (current: {{ $value | humanizePercentage }})"
+
+      # Service Down Alert
+      - alert: ServiceDown
+        expr: up{job=~".*-service"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "Service {{ $labels.job }} has been down for more than 2 minutes"
+
+      # High Response Time
+      - alert: HighResponseTime
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (service, le)
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High response time for {{ $labels.service }}"
+          description: "95th percentile response time is above 1s (current: {{ $value }}s)"
+
+      # High CPU Usage
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is above 80% (current: {{ $value | humanize }}%)"
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is above 85% (current: {{ $value | humanize }}%)"
+
+  - name: video_processing
+    interval: 30s
+    rules:
+      # Video Processing Queue Backlog
+      - alert: VideoProcessingBacklog
+        expr: kafka_consumergroup_lag{topic="video-upload-events"} > 100
+        for: 15m
+        labels:
+          severity: warning
+          team: video-processing
+        annotations:
+          summary: "Video processing queue has high backlog"
+          description: "Kafka consumer lag is above 100 messages (current: {{ $value }})"
+
+      # FFmpeg Processing Failures
+      - alert: HighFFmpegFailureRate
+        expr: |
+          (
+            sum(rate(ffmpeg_processing_failures_total[5m]))
+            /
+            sum(rate(ffmpeg_processing_total[5m]))
+          ) > 0.1
+        for: 10m
+        labels:
+          severity: critical
+          team: video-processing
+        annotations:
+          summary: "High FFmpeg processing failure rate"
+          description: "FFmpeg failure rate is above 10% (current: {{ $value | humanizePercentage }})"
+
+      # Storage Node Unavailable
+      - alert: StorageNodeUnavailable
+        expr: storage_node_health == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: storage
+        annotations:
+          summary: "Storage node {{ $labels.node_id }} is unavailable"
+          description: "Storage node has been unavailable for more than 5 minutes"
+
+  - name: kafka_alerts
+    interval: 30s
+    rules:
+      # Kafka Broker Down
+      - alert: KafkaBrokerDown
+        expr: kafka_brokers < 1
+        for: 2m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "Kafka broker is down"
+          description: "No Kafka brokers are available"
+
+      # High Kafka Consumer Lag
+      - alert: HighKafkaConsumerLag
+        expr: kafka_consumergroup_lag > 1000
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High Kafka consumer lag for {{ $labels.consumergroup }}"
+          description: "Consumer lag is above 1000 messages (current: {{ $value }})"
+
+  - name: elasticsearch_alerts
+    interval: 30s
+    rules:
+      # Elasticsearch Cluster Health
+      - alert: ElasticsearchClusterNotHealthy
+        expr: elasticsearch_cluster_health_status{color="red"} == 1
+        for: 5m
+        labels:
+          severity: critical
+          team: search
+        annotations:
+          summary: "Elasticsearch cluster health is RED"
+          description: "Elasticsearch cluster is in RED state"
+
+      # High Search Latency
+      - alert: HighSearchLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(elasticsearch_search_query_time_seconds_bucket[5m])) by (le)
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+          team: search
+        annotations:
+          summary: "High Elasticsearch search latency"
+          description: "95th percentile search latency is above 2s (current: {{ $value }}s)"
+
+  - name: sla_alerts
+    interval: 1m
+    rules:
+      # SLA Violation - 99.9% Availability
+      - alert: SLAViolation
+        expr: |
+          (
+            sum(rate(http_requests_total{status!~"5.."}[1h]))
+            /
+            sum(rate(http_requests_total[1h]))
+          ) < 0.999
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+          sla: "true"
+        annotations:
+          summary: "SLA violation: Availability below 99.9%"
+          description: "System availability is {{ $value | humanizePercentage }} (target: 99.9%)"
