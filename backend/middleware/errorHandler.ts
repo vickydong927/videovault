@@ -55,12 +55,18 @@ export const errorHandler = (
   }
 
   // Handle unexpected errors
+  // Handle unexpected errors
   console.error('Unexpected error:', err);
+  if (err instanceof Error && err.stack) {
+    console.error(err.stack);
+  }
+
   res.status(500).json({
     success: false,
     error: {
       code: 'INTERNAL_SERVER_ERROR',
-      message: 'An unexpected error occurred'
+      message: err instanceof Error ? err.message : String(err), // ✅ 关键：返回真实 message
+      name: err instanceof Error ? err.name : 'UnknownError',     // ✅ 方便判断类型
     }
   });
 }; 

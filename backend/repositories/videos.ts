@@ -33,34 +33,33 @@ export class VideoRepository {
 
   async findAll(page: number = 1, limit: number = 20): Promise<any[]> {
     const offset = (page - 1) * limit;
-    
-    const result = await db
-      .select({
-        id: videos.id,
-        title: videos.title,
-        description: videos.description,
-        thumbnailUrl: videos.thumbnailUrl,
-        videoUrl: videos.videoUrl,
-        duration: videos.duration,
-        views: videos.views,
-        likes: videos.likes,
-        tags: videos.tags,
-        category: videos.category,
-        status: videos.status,
-        createdAt: videos.createdAt,
-        updatedAt: videos.updatedAt,
-        creatorId: users.id,
-        creatorName: users.name,
-        creatorAvatar: users.avatar,
-      })
-      .from(videos)
-      .leftJoin(users, eq(videos.creatorId, users.id))
-      .where(eq(videos.status, 'ready'))
-      .orderBy(desc(videos.createdAt))
-      .limit(limit)
-      .offset(offset);
 
-    return result.map(this.formatVideoResponse);
+    const result = await db
+        .select({
+          id: videos.id,
+          title: videos.title,
+          description: videos.description,
+          thumbnailUrl: videos.thumbnailUrl,
+          videoUrl: videos.videoUrl,
+          duration: videos.duration,
+          views: videos.views,
+          likes: videos.likes,
+          tags: videos.tags,
+          category: videos.category,
+          status: videos.status,
+          createdAt: videos.createdAt,
+          updatedAt: videos.updatedAt,
+          creatorId: videos.creatorId,
+        })
+        .from(videos)
+        .orderBy(desc(videos.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      return result.map((v) => ({
+        ...v,
+        uploadDate: v.createdAt?.toISOString?.() ?? new Date().toISOString(),
+      }));
   }
 
   async findById(id: string): Promise<any | null> {

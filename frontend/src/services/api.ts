@@ -12,7 +12,7 @@ import {
 
 class ApiService {
   private api = axios.create({
-    baseURL: '/api',
+    baseURL: 'http://localhost:3000/api',
     headers: {
       'Content-Type': 'application/json',
     },

@@ -17,7 +17,7 @@ if (!process.env.DATABASE_URL) {
 
 // Database connection with connection pooling
 const client = postgres(process.env.DATABASE_URL, {
-  ssl: { rejectUnauthorized: false },
+  ssl: false,
   max: 10, // Set pool size
   idle_timeout: 20, // Idle connection timeout in seconds
   connect_timeout: 10, // Connection timeout in seconds
